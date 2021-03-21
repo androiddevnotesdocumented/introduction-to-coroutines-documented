@@ -194,3 +194,190 @@ Contrary to what the code says, it looks like the last thread was executed first
 This is just one way threads can lead to unpredictable behavior. When working with multiple threads, you may also run into what's called a race condition. This is when multiple threads try to access the same value in memory at the same time. Race conditions can result in hard to reproduce, random looking bugs, which may cause your app to crash, often unpredictably.
 
 Performance issues, race conditions, and hard to reproduce bugs are some of the reasons why we don't recommend working with threads directly. Instead, you'll learn about a feature in Kotlin called Coroutines that will help you write concurrent code.
+
+### Coroutines
+
+Coroutines enable multitasking, but provide another level of abstraction over simply working with threads. One key feature of coroutines is the ability to store state, so that they can be halted and resumed. A coroutine may or may not execute.
+
+The state, represented by _continuations_, allows portions of code to signal when they need to hand over control or wait for another coroutine to complete its work before resuming.
+
+This flow is called cooperative multitasking. Kotlin's implementation of coroutines adds a number of features to assist multitasking.
+
+In addition to continuations, creating a coroutine encompasses that work in a `Job`, a cancelable unit of work with a lifecycle, inside a `CoroutineScope`. A `CoroutineScope` is a context that enforces cancellation and other rules to its children and their children recursively. A `Dispatcher` manages which backing thread the coroutine will use for its execution, removing the responsibility of when and where to use a new thread from the developer.
+
+<table class="vertical-rules">
+
+<tbody>
+
+<tr>
+
+<td colspan="1" rowspan="1">
+
+Job
+
+</td>
+
+<td colspan="1" rowspan="1">
+
+A cancelable unit of work, such as one created with the `launch()` function.
+
+</td>
+
+</tr>
+
+<tr>
+
+<td colspan="1" rowspan="1">
+
+CoroutineScope
+
+</td>
+
+<td colspan="1" rowspan="1">
+
+Functions used to create new coroutines such as `launch()` and `async()` extend `CoroutineScope`.
+
+</td>
+
+</tr>
+
+<tr>
+
+<td colspan="1" rowspan="1">
+
+Dispatcher
+
+</td>
+
+<td colspan="1" rowspan="1">
+
+Determines the thread the coroutine will use. The `Main` dispatcher will always run coroutines on the main thread, while dispatchers like `Default`, `IO`, or `Unconfined` will use other threads.
+
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+You'll learn more about these later but `Dispatchers` are one of the ways coroutines can be so performant. One avoids the performance cost of initializing new threads.
+
+Let's adapt our earlier examples to use coroutines.
+
+```kotlin
+import kotlinx.coroutines
+
+fun main() {
+    repeat(3) {
+        GlobalScope.launch {
+            println("Hi from ${Thread.currentThread()}")
+        }
+    }
+}
+
+```
+
+Output from Kotlin Playground. Not output from IntelliJ(!?)
+
+```
+Hi from Thread[DefaultDispatcher-worker-2@coroutine#2,5,main]
+Hi from Thread[DefaultDispatcher-worker-1@coroutine#1,5,main]
+Hi from Thread[DefaultDispatcher-worker-1@coroutine#3`,5,main]
+```
+
+The snippet above creates three coroutines in the Global Scope using the default Dispatcher. The `GlobalScope` allows any coroutines in it to run as long as the app is running. For the reasons we talked about concerning the main thread, this is not recommended outside example code. When you use coroutines in your apps, we will use other scopes.
+
+The `launch()` function creates a coroutine from the enclosed code wrapped in a cancelable Job object. `launch()` is used when a return value is not needed outside the confines of the coroutine.
+
+
+### Signature of `launch()`
+
+Let's look at the full signature of `launch()` to understand the next important concept in coroutines.
+
+```kotlin
+
+fun CoroutineScope.launch {
+    context: CoroutineContext = EmptyCoroutineContext,
+    start: CoroutineStart = CoroutineStart.DEFAULT,
+    block: suspend CoroutineScope.() -> Unit
+}
+
+```
+
+Behind the scenes, the block of code you passed to launch is marked with the `suspend` keyword. Suspend signals that a block of code or function can be paused or resumed.
+
+### runBlocking
+
+The next examples will use `runBlocking()`, which as the name implies, starts a new coroutine and blocks the current thread until completion. It is mainly used to bridge between blocking and non-blocking code in main functions and tests. You will not be using it often in typical Android code.
+
+```kotlin
+
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
+val formatter: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_TIME
+val time = { formatter.format(LocalDateTime.now()) }
+
+suspend fun getValue(): Double {
+
+    println("entering getValue() at ${time()}")
+    delay(3000)
+    println("leaving getValue() at ${time()}")
+    return Math.random()
+}
+
+fun main() {
+    runBlocking {
+        val num1 = getValue()
+        val num2 = getValue()
+        println("result of num1 + num2 is ${num1 + num2}")
+    }
+}
+
+```
+
+`getValue()` returns a random number after a set delay time. It uses a `DateTimeFormatter`. To illustrate the appropriate entry and exit times. The main function calls `getValue()` twice and returns the sum.
+
+```
+entering getValue() at 18:41:14.5144294
+leaving getValue() at 18:41:17.5328239
+entering getValue() at 18:41:17.5338232
+leaving getValue() at 18:41:20.5471103
+result of num1 + num2 is 1.4333073415044422
+```
+
+To see this in action, replace the `main()` function (keeping all the other code) with the following.
+
+```kotlin
+fun main() {
+    runBlocking {
+        val num1 = async { getValue() }
+        val num2 = async { getValue() }
+        println("result of num1 + num2 is ${num1.await() + num2.await()}")
+    }
+}
+```
+
+The two calls to `getValue()` are independent and don't necessarily need the coroutine to suspend. Kotlin has an async function that's similar to launch. The `async()` function is defined as follows.
+
+```kotlin
+fun <T> CoroutineScope.async(
+    context: CoroutineContext = EmptyCoroutineContext,
+    start: CoroutineStart = CoroutineStart.DEFAULT,
+    block: suspend CoroutineScope.() -> T
+): Deferred<T> 
+
+```
+
+The `async()` function returns a value of type `Deferred`. A `Deferred` is a cancelable `Job` that can hold a reference to a future value. By using a `Deferred`, you can still call a function as if it immediately returns a value - a `Deferred` just serves as a placeholder, since you can't be certain when an asynchronous task will return. A `Deferred` (also called a Promise or Future in other languages) guarantees that a value will be returned to this object at a later time. An asynchronous task, on the other hand, will not block or wait for execution by default. To initiate that the current line of code needs to wait for the output of a `Deferred`, you can call `await()` on it. It will return the raw value.
+
+### When to mark functions as suspend
+
+In the previous example, you may have noticed that the `getValue()` function is also defined with the `suspend` keyword. The reason is that it calls `delay()`, which is also a `suspend` function. Whenever a function calls another `suspend` function, then it should also be a `suspend` function.
+
+If this is the case, then why wouldn't the `main()` function in our example be marked with `suspend`? It does call `getValue()`, after all.
+
+Not necessarily. `getValue()` is actually called in the function passed into `runBlocking()`, which is a `suspend` function, similar to the ones passed into `launch()` and `async()`. However, `getValue()` is not called in `main()` itself, nor is `runBlocking()` a `suspend` function, so `main()` is not marked with `suspend`. If a function does not call a `suspend` function, then it does not need to be a `suspend` function itself.
