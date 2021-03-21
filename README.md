@@ -1,3 +1,21 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**
+
+- [Documented](#documented)
+- [Important points](#important-points)
+  - [What is thread?](#what-is-thread)
+  - [What is multithreading and concurrency?](#what-is-multithreading-and-concurrency)
+  - [Create a Thread](#create-a-thread)
+  - [Creating and running multiple threads](#creating-and-running-multiple-threads)
+  - [Problems with Threads](#problems-with-threads)
+  - [Coroutines](#coroutines)
+  - [Signature of `launch()`](#signature-of-launch)
+  - [runBlocking](#runblocking)
+  - [When to mark functions as suspend](#when-to-mark-functions-as-suspend)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 ## Documented
 
 Documentation:
